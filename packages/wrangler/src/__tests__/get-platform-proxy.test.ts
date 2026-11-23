@@ -4,9 +4,11 @@ import {
 	runInTempDir,
 	writeWranglerConfig,
 } from "@cloudflare/workers-utils/test-helpers";
+import { Log, LogLevel } from "miniflare";
 import { fetch } from "undici";
 import { beforeEach, describe, it, vi } from "vitest";
 import { mockConsoleMethods } from "./helpers/mock-console";
+import type { SendEmail } from "@cloudflare/workers-types/experimental";
 
 const { miniflareInstances } = vi.hoisted(() => ({
 	miniflareInstances: [] as Array<{ ready: Promise<URL> }>,
@@ -33,6 +35,45 @@ describe("getPlatformProxy", () => {
 
 	beforeEach(() => {
 		miniflareInstances.length = 0;
+	});
+
+	it("forwards local email logs to a supplied Miniflare logger", async ({
+		expect,
+	}) => {
+		writeWranglerConfig(
+			{
+				name: "test-worker",
+				compatibility_date: "2026-11-02",
+				send_email: [{ name: "EMAIL" }],
+			},
+			"./wrangler.json"
+		);
+		const log = new Log(LogLevel.INFO);
+		const logWithLevel = vi.spyOn(log, "logWithLevel");
+		const platform = await getPlatformProxy<{ EMAIL: SendEmail }>({
+			configPath: "./wrangler.json",
+			persist: false,
+			remoteBindings: false,
+			log,
+		});
+
+		try {
+			await platform.env.EMAIL.send({
+				from: "sender@example.com",
+				to: "recipient@example.com",
+				subject: "Local email",
+				html: "<p>Local email</p>",
+			});
+
+			await vi.waitFor(() => {
+				expect(logWithLevel).toHaveBeenCalledWith(
+					LogLevel.INFO,
+					expect.stringMatching(/HTML: .+\.html/)
+				);
+			});
+		} finally {
+			await platform.dispose();
+		}
 	});
 
 	it("returns 404 for asset misses", async ({ expect }) => {

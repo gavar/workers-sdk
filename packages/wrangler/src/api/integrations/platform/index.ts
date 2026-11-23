@@ -37,6 +37,7 @@ import type {
 	RawEnvironment,
 } from "@cloudflare/workers-utils/config";
 import type {
+	Log,
 	RemoteProxyConnectionString,
 	V4MiniflareOptions,
 	V4ModuleRule,
@@ -111,6 +112,10 @@ export type GetPlatformProxyOptions = {
 	 * The values from files earlier in the `envFiles` array (e.g. `envFiles[x]`) will be overridden by values from files later in the array (e.g. `envFiles[x+1)`).
 	 */
 	envFiles?: string[];
+	/**
+	 * Logger for the local Miniflare instance. Miniflare logging is disabled by default.
+	 */
+	log?: Log;
 	/**
 	 * Indicates if and where to persist the bindings data, if not present or `true` it defaults to the same location
 	 * used by wrangler: `.wrangler/state/v3` (so that the same data can be easily used by the caller and wrangler).
@@ -209,7 +214,10 @@ export async function getPlatformProxy<
 			remoteProxySession?.remoteProxyConnectionString,
 	});
 
-	const mf = new Miniflare(convertV4MiniflareOptions(miniflareOptions));
+	const mf = new Miniflare({
+		...convertV4MiniflareOptions(miniflareOptions),
+		log: options.log,
+	});
 
 	const bindings: Env = await mf.getBindings();
 
